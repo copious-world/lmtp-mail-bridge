@@ -168,7 +168,7 @@ class SMTPBackendServer extends SMTPServer {
             "encode" : false,
             "media_type" : nearest_media_type(attch.contentType),
             "asset_type" : "mail:attachment",
-            "desription" : mailobj.from,
+            "description" : mailobj.from,
             "abstract" : "",
             "keys" : [attch.partId, mailobj.from,tmp_uid],
             "txt_full" : "attachment",
@@ -203,10 +203,31 @@ class SMTPBackendServer extends SMTPServer {
         let id_list_promises = []
         for ( let attch of attachments ) {
             let p_object = this.convert_to_persistence_object(attch,mailobj)
-            id_list_promises.push(this.new_entry(p_object))
+            id_list_promises.push(this.new_entry(p_object))  // send the attachment to persistence
         }
         let id_list = await Promise.all(id_list_promises)
         return id_list
+    }
+
+    message_for(mailobj) {
+        let t_list = mailobj.headers.to
+        if ( t_list.length === 1 ) {
+            let msg = {
+                "mail" : t_list[0],
+                "data" : mailobj
+            } 
+            return msg  
+        } else {
+            let msgs = []
+            for ( let to of t_list ) {
+                let msg = {
+                    "mail" : to,
+                    "data" : mailobj
+                }
+                msgs.push(msg)  
+            }
+            return msgs
+        }
     }
 
 }
@@ -297,7 +318,16 @@ const smtp_conf = {
                 if ( mailobj.attachments.length ) { // convert attachments to identifiers
                     mailobj.attachments = await lmtp_server.relay_attachments(mailobj)
                 }
-                await lmtp_server.messenger.send_on_path(mailobj,"mail")
+                let mail_msg = this.message_for(mailobj)
+                if ( Array.isArray(mail_msg) ) {
+                    let promises = []
+                    for ( let m_msg of mail_msg ) {
+                        promises.push(lmtp_server.messenger.set_on_path(m_msg,"mail"))
+                    }
+                    await Promise.all(promises)
+                } else {
+                    await lmtp_server.messenger.set_on_path(mail_msg,"mail")
+                }
             } else {
                 process.stdout.write(JSON.stringify(mailobj, (k, v) => (k === 'content' || k === 'release' ? undefined : v), 3));
             }
