@@ -1,6 +1,8 @@
-/* eslint no-console: 0 */
-
 'use strict';
+
+const MailParser = require('mailparser').MailParser;
+const LinkManager = require('com_link_manager')
+const {nearest_media_type} = require('global_persistence')
 
 // Replace '../lib/smtp-server' with 'smtp-server' when running this script outside this directory
 const SMTPServer = require('smtp-server').SMTPServer;
@@ -13,8 +15,206 @@ const SERVER_HOST = '0.0.0.0';
 // or
 //   nc -c localhost 2524
 
-// Setup server
-const server = new SMTPServer({
+let lmtp_server = false
+
+class SMTPBackendServer extends SMTPServer {
+
+    constructor(smtp_conf,endpoint_conf) {
+        super(smtp_conf)
+
+        this.link_manager = new LinkManager(endpoint_conf)
+        this.link_manager.add_instance_paths("mail",this)
+
+        this.messenger = false
+        this.pesistence = false;
+    }
+
+    install_service_connection(instance,conf) {
+    }
+
+    update_service_connection(instance,conf) {
+    }
+
+    remove_service_connection(instance,conf) {
+    }
+
+    /**
+     * set_messenger
+     * 
+     * @param {*} path 
+     * @param {*} instance 
+     * @param {*} conf 
+     */
+    async set_messenger(path,instance,conf) {
+        if ( (path !== 'mail') && (path !== 'persistence') ) {
+            return
+        }
+        if ( path === 'mail' ) {
+            this.messenger = instance
+        }
+        if ( path === 'pesistence' ) {
+            this.pesistence = instance
+        }
+    }
+
+    /**
+     * update_messenger
+     * 
+     * @param {*} path 
+     * @param {*} instance 
+     * @param {*} conf 
+     */
+    async update_messenger(path,instance,conf) {
+        if ( path !== 'email' ) return
+        //
+        if ( !(this.messenger && instance ) )  {
+            this.messenger = instance
+        }
+        //
+        if ( typeof this.messenger.add_relay_path === 'function' ) {
+            this.messenger.add_relay_path(conf)
+            await this.messenger.ready()
+        }
+    }
+
+    /**
+     * close_messenger
+     * 
+     * @param {*} path 
+     * @param {*} instance 
+     * @param {*} conf 
+     */
+    async close_messenger(path,instance,conf) {
+        if ( !(this.messenger && instance ) )  {
+            this.messenger = instance
+        }
+        //
+        if ( typeof this.messenger.remove_relay_path === 'function' ) {
+            this.messenger.remove_relay_path(conf)
+            await this.messenger.ready()
+        } else if ( typeof this.messenger.closeAll === 'function' ) {
+            await this.messenger.closeAll()
+        }
+    }
+
+
+    /*
+    
+    upload_record = {
+        "_tracking" : tracking,             // tracking of the asset
+        "_id" :  this._user_id,             // should be a UCWID  ... from the client ... will be single user context
+        "_author_tracking" :  this._author_tracking,
+        "_paid" : paid,
+        "_transition_path" : "asset_path",
+        "asset_path" : `${tracking}+${asset_type}+${this._user_id}`,
+        "title" : encodeURIComponent(title),
+        "subject" : encodeURIComponent(subject),
+        "keys" : keys,
+        "asset_type" : asset_type,        // blog, stream, link-package, contact, ownership, etc...
+        "media_type" : media_type,        // text, audio, video, image
+        "abstract" : encodeURIComponent(abstract),
+        "encode" : true,
+        "txt_full" : encodeURIComponent(full_text),
+        "media" : {
+            "poster" : poster,
+            "source" : media_data
+        },
+        "dates" : {
+            "created" : Date.now(),
+            "updated" : modDate
+        },
+        "_history" : this._current_asset_history ? this._current_asset_history : [],
+        "_prev_text" : this._current_asset_prev_text,
+        "text_ucwid_info" : this._current_asset_text_ucwid_info,
+        "repository_fields" : repository_fields,
+        "exclusion_fields" : exclusion_fields,
+    
+        //
+        "topic" : "command-upload",
+        "path" : "upload-media",
+        "file_name" : data_hash,
+    
+    
+        postable.ucwid = user_info.ccwid
+        postable.session = session
+        postable.hash = data.hash
+        postable.public_signer = g_current_pub_identity.signer_public_key
+        postable.axiom_public_key = g_current_pub_identity.axiom_public_key
+    
+    }
+    
+    */
+
+    id_from_to(list_of_to) {
+        return list_of_to.join(',')   /// make this more sophisticated
+    }
+    
+
+    // convert to the persistence format
+    convert_to_persistence_object(attch,mailobj) {
+        //
+        let attr_descr = Object.assign({},mailobj.headers)
+        let tmp_uid =  this.id_from_to(mailobj.to)
+        let pobj = Object.assign(attr_descr,
+        {
+            "subject" : mailobj.subject,
+            "title" : mailobj.subject,
+            "_tracking" : attch.partId,  // may change after adding
+            "_id" :  tmp_uid,             // should be a UCWID  ... from the client ... will be single user context
+            "_author_tracking" :  this._author_tracking,
+            "_paid" : false,
+            "_transition_path" : "asset_path",
+            "asset_path" : `${attch.partId}+mail:attachment+${tmp_uid}`,
+            "encode" : false,
+            "media_type" : nearest_media_type(attch.contentType),
+            "asset_type" : "mail:attachment",
+            "desription" : mailobj.from,
+            "abstract" : "",
+            "keys" : [attch.partId, mailobj.from,tmp_uid],
+            "txt_full" : "attachment",
+            "_history" : [],
+            "_prev_text" : "",
+            "_x_link_counter" : "",
+            "ucwid_info" : false,
+            "ucwid" : false,
+            "_is_encrypted" : false,
+            "dates" : {
+                "created" : mailobj.date,
+                "updated" : mailobj.date
+            },
+            "media" : {
+                "name" : attch.filename,
+                "source" : {
+                    "blob_url" : attch.content,
+                    "protocol" : "local_lan",
+                    "local_lan" : false
+                },
+                "mime_type" : attch.contentType
+            }
+        })
+
+        //
+        return pobj
+    }
+
+
+    async relay_attachments(mailobj) {
+        let attachments = mailobj.attachments
+        let id_list_promises = []
+        for ( let attch of attachments ) {
+            let p_object = this.convert_to_persistence_object(attch,mailobj)
+            id_list_promises.push(this.new_entry(p_object))
+        }
+        let id_list = await Promise.all(id_list_promises)
+        return id_list
+    }
+
+}
+
+
+
+
+const smtp_conf = {
     // log to console
     logger: true,
 
@@ -62,9 +262,7 @@ const server = new SMTPServer({
 
         let mailparser = new MailParser();
         //
-        let subject = ""
-        let text = ""
-
+        
         let mailobj = {
             from: session.envelope.mailFrom,
             to: session.envelope.rcptTo,
@@ -93,10 +291,16 @@ const server = new SMTPServer({
                 mailobj.text = data;
             }
         });
-        
-        mailparser.on('end', () => {
-            // but send it to global persistence....
-            process.stdout.write(JSON.stringify(mailobj, (k, v) => (k === 'content' || k === 'release' ? undefined : v), 3));
+
+        mailparser.on('end', async () => {
+            if ( lmtp_server.messenger ) {
+                if ( mailobj.attachments.length ) { // convert attachments to identifiers
+                    mailobj.attachments = await lmtp_server.relay_attachments(mailobj)
+                }
+                await lmtp_server.messenger.send_on_path(mailobj,"mail")
+            } else {
+                process.stdout.write(JSON.stringify(mailobj, (k, v) => (k === 'content' || k === 'release' ? undefined : v), 3));
+            }
         });
 
         // 
@@ -113,12 +317,17 @@ const server = new SMTPServer({
 
 
     }
-});
+}
 
-server.on('error', err => {
+
+
+// Setup server
+lmtp_server = new SMTPBackendServer(smtp_conf,endpoint_conf);
+
+lmtp_server.on('error', err => {
     console.log('Error occurred');
     console.log(err);
 });
 
 // start listening
-server.listen(SERVER_PORT, SERVER_HOST);
+lmtp_server.listen(SERVER_PORT, SERVER_HOST);
