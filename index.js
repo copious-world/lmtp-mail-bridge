@@ -143,55 +143,86 @@ class SMTPBackendServer extends SMTPServer {
     
     }
     
+
+headers a Map value that holds MIME headers for the attachment node
+
     */
 
     id_from_to(list_of_to) {
         return list_of_to.join(',')   /// make this more sophisticated
     }
+
+    to_blob_url(content,mime) {
+        //
+        let b64url = content.toString('base64url');
+        //
+        let blob_url = 'data:' + mime + ';' + 'base64url' + ',' + b64url; 
+        return blob_url
+    }
+
+    extract_addr(from) {
+        let value = from.value
+        if ( value ) {
+            let addr_obj = value[0]
+            if ( addr_obj.address ) {
+                return addr_obj.address
+            }
+        }
+        return false
+    }
     
 
     // convert to the persistence format
     convert_to_persistence_object(attch,mailobj) {
+        if ( attch.related ) return false
         //
-        let attr_descr = Object.assign({},mailobj.headers)
+        let attr_descr = Object.assign({},mailobj.headers) // hearder converted to an object
+        let from_addr = this.extract_addr(mailobj.from)
+
+        if ( !from_addr ) return false
+
         let tmp_uid =  this.id_from_to(mailobj.to)
-        let pobj = Object.assign(attr_descr,
-        {
-            "subject" : mailobj.subject,
-            "title" : mailobj.subject,
-            "_tracking" : attch.partId,  // may change after adding
-            "_id" :  tmp_uid,             // should be a UCWID  ... from the client ... will be single user context
-            "_author_tracking" :  this._author_tracking,
-            "_paid" : false,
-            "_transition_path" : "asset_path",
-            "asset_path" : `${attch.partId}+mail:attachment+${tmp_uid}`,
-            "encode" : false,
-            "media_type" : nearest_media_type(attch.contentType),
-            "asset_type" : "mail:attachment",
-            "description" : mailobj.from,
-            "abstract" : "",
-            "keys" : [attch.partId, mailobj.from,tmp_uid],
-            "txt_full" : "attachment",
-            "_history" : [],
-            "_prev_text" : "",
-            "_x_link_counter" : "",
-            "ucwid_info" : false,
-            "ucwid" : false,
-            "_is_encrypted" : false,
-            "dates" : {
-                "created" : mailobj.date,
-                "updated" : mailobj.date
-            },
-            "media" : {
-                "name" : attch.filename,
-                "source" : {
-                    "blob_url" : attch.content,
-                    "protocol" : "local_lan",
-                    "local_lan" : false
+        let pobj = Object.assign(attr_descr,{
+            //
+                "subject" : mailobj.subject,
+                "title" : mailobj.subject,
+                "_tracking" : attch.partId,  // may change after adding
+                "_id" :  tmp_uid,             // should be a UCWID  ... from the client ... will be single user context
+                "_author_tracking" :  from_addr,
+                "_paid" : false,
+                "_transition_path" : "asset_path",
+                "asset_path" : `${attch.partId}+mail:attachment+${tmp_uid}`,
+                "encode" : false,
+                "media_type" : nearest_media_type(attch.contentType),
+                "asset_type" : ("mail:" + attch.contentDisposition),
+                "description" : from_addr,
+                "abstract" : "",
+                "keys" : [attch.partId, mailobj.from, tmp_uid],
+                "txt_full" : "attachment",
+                "_history" : [],
+                "_prev_text" : "",
+                "_x_link_counter" : "",
+                "ucwid_info" : false,
+                "ucwid" : false,
+                "_is_encrypted" : false,
+                "dates" : {
+                    "created" : mailobj.date.getTime(),
+                    "updated" : mailobj.date.getTime()
                 },
-                "mime_type" : attch.contentType
-            }
-        })
+                "media" : {
+                    "name" : attch.filename,
+                    "source" : {
+                        "blob_url" : this.to_blob_url(attch.content,attch.contentType),
+                        "protocol" : "local_lan",
+                        "local_lan" : false     // not stored yet
+                    },
+                    "mime_type" : attch.contentType,
+                    "cid" : attch.cid,       // mail type of cid
+                    "contentId" : attch.contentId,
+                    "size" : attch.size,
+                    "checksum" : checksum.checksum
+                }
+            })
 
         //
         return pobj
@@ -203,17 +234,24 @@ class SMTPBackendServer extends SMTPServer {
         let id_list_promises = []
         for ( let attch of attachments ) {
             let p_object = this.convert_to_persistence_object(attch,mailobj)
-            id_list_promises.push(this.new_entry(p_object))  // send the attachment to persistence
+            if ( p_object ) {
+                id_list_promises.push(this.new_entry(p_object))  // send the attachment to persistence
+            }
         }
         let id_list = await Promise.all(id_list_promises)
         return id_list
     }
 
+
     message_for(mailobj) {
-        let t_list = mailobj.headers.to
+
+        let t_list = mailobj.headers.get('to')
+        t_list = t_list.concat(mailobj.get('cc'))
+        t_list = t_list.concat(mailobj.get('bcc'))
+
         if ( t_list.length === 1 ) {
             let msg = {
-                "mail" : t_list[0],
+                "mail" : this.extract_addr(t_list[0]),
                 "data" : mailobj
             } 
             return msg  
@@ -221,7 +259,7 @@ class SMTPBackendServer extends SMTPServer {
             let msgs = []
             for ( let to of t_list ) {
                 let msg = {
-                    "mail" : to,
+                    "mail" : this.extract_addr(to),
                     "data" : mailobj
                 }
                 msgs.push(msg)  
@@ -318,14 +356,14 @@ const smtp_conf = {
                 if ( mailobj.attachments.length ) { // convert attachments to identifiers
                     mailobj.attachments = await lmtp_server.relay_attachments(mailobj)
                 }
-                let mail_msg = this.message_for(mailobj)
-                if ( Array.isArray(mail_msg) ) {
+                let mail_msg = lmtp_server.message_for(mailobj)
+                if ( Array.isArray(mail_msg) ) {    // more than one recipient
                     let promises = []
                     for ( let m_msg of mail_msg ) {
                         promises.push(lmtp_server.messenger.set_on_path(m_msg,"mail"))
                     }
                     await Promise.all(promises)
-                } else {
+                } else {                            // just one recipient
                     await lmtp_server.messenger.set_on_path(mail_msg,"mail")
                 }
             } else {
