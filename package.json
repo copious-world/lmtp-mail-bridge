@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Allows a local stmp server to pass data through an lmtp server to the copious endpoint servers.",
   "main": "index.js",
+  "bin" : {
+    "lmtp-mail-bridge" : "bin/index.js"
+  },
   "scripts": {
     "test": "node tests/index.js"
   },
@@ -19,6 +22,10 @@
   ],
   "author": "R. Leddy",
   "license": "MIT",
+  "funding": {
+    "type" : "GitHub Sponsors",
+    "url" : "https://github.com/sponsors/copious-world"
+  },
   "bugs": {
     "url": "https://github.com/copious-world/lmtp-mail-bridge/issues"
   },
