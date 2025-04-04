@@ -49,7 +49,7 @@ try {
         lmtp_conf = conf.lmtp_conf
     } else if ( conf.lmtp_conf === "string" ) {
         let lmtp_conf_str = fs.readFileSync(conf.lmtp_conf).toString()
-        lmtp_conf = JSON.parse(conf_lmtp_conf_strstr)
+        lmtp_conf = JSON.parse(lmtp_conf_str)
     }
     if ( typeof lmtp_conf !== 'object' ) {
         throw new Error("lmtp conf is not an object")
