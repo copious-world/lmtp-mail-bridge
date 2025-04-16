@@ -1,6 +1,6 @@
 {
   "name": "lmtp-mail-bridge",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Allows a local stmp server to pass data through an lmtp server to the copious endpoint servers.",
   "main": "index.js",
   "bin": {
@@ -32,7 +32,9 @@
   "homepage": "https://github.com/copious-world/lmtp-mail-bridge#readme",
   "dependencies": {
     "com_link_manager": "^0.1.5",
+    "global_persistence": "^0.3.7",
     "mailparser": "^3.7.2",
+    "message-relay-services": "^0.9.25",
     "smtp-server": "^3.13.6"
   }
 }

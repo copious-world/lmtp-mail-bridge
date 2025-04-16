@@ -65,6 +65,7 @@ try {
     //
 } catch (e) {
     console.log("Error in configuration")
+    console.log(e)
     process.exit(0)
 }
 
