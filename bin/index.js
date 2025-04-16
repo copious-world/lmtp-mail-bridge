@@ -31,7 +31,7 @@ let lmtp_conf = {
     size: 10 * 1024 * 1024
 }
 
-let endpoint_conf = {}
+let link_manager_endpoint_conf = {}
 
 let conf_file_name = "lmtp_service.conf"
 
@@ -54,12 +54,13 @@ try {
     if ( typeof lmtp_conf !== 'object' ) {
         throw new Error("lmtp conf is not an object")
     }
+
     //
-    if ( typeof conf.endpoint_conf === "object" ) {
-        endpoint_conf = conf.endpoint_conf
-    } else if ( conf.endpoint_conf === "string" ) {
-        let endpoint_conf_str = fs.readFileSync(conf.endpoint_conf).toString()
-        endpoint_conf = JSON.parse(endpoint_conf_str)
+    if ( typeof conf.link_manager_endpoint_conf === "object" ) {
+        link_manager_endpoint_conf = conf.link_manager_endpoint_conf
+    } else if ( conf.link_manager_endpoint_conf === "string" ) {
+        let link_manager_endpoint_conf_str = fs.readFileSync(conf.link_manager_endpoint_conf).toString()
+        link_manager_endpoint_conf = JSON.parse(link_manager_endpoint_conf_str)
     }
     //
 } catch (e) {
@@ -82,7 +83,7 @@ if ( lmtp_conf.server_host !== undefined ) {
 
 
 // Setup server
-const lmtp_server = new SMTPBackendServer(lmtp_conf,endpoint_conf);
+const lmtp_server = new SMTPBackendServer(lmtp_conf,link_manager_endpoint_conf);
 
 lmtp_server.on('error', err => {
     console.log('Error occurred');
